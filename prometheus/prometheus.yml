@@ -8,4 +8,4 @@ scrape_configs:
 
   - job_name: 'nginx'
     static_configs:
-      - targets: ['nginx:80']
+      - targets: ['prometheus:9090']
