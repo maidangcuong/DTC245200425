@@ -1,6 +1,17 @@
 version: '3.8'
 
+networks:
+  frontend-net:
+    driver: bridge
+  backend-net:
+    driver: bridge
+
+volumes:
+  db_data:
+  grafana_data:
+
 services:
+  # ================= DATABASE (MYSQL) =================
   db:
     image: mysql:8.0
     container_name: wordpress_db
@@ -13,8 +24,9 @@ services:
     volumes:
       - db_data:/var/lib/mysql
     networks:
-      - app-network
+      - backend-net
 
+  # ================= DATABASE MANAGEMENT (PHPMYADMIN) =================
   phpmyadmin:
     image: phpmyadmin/phpmyadmin
     container_name: wordpress_phpmyadmin
@@ -22,11 +34,14 @@ services:
     environment:
       PMA_HOST: db
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      PMA_ABSOLUTE_URI: https://localhost/phpmyadmin/
     depends_on:
       - db
     networks:
-      - app-network
+      - frontend-net
+      - backend-net
 
+  # ================= WEB APPLICATION (WORDPRESS) =================
   wordpress:
     image: wordpress:latest
     container_name: wordpress_app
@@ -39,11 +54,17 @@ services:
       WORDPRESS_CONFIG_EXTRA: |
         define('WP_HOME', 'https://localhost');
         define('WP_SITEURL', 'https://localhost');
+        define('FORCE_SSL_ADMIN', true);
+        if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
+            $_SERVER['HTTPS'] = 'on';
+        }
     depends_on:
       - db
     networks:
-      - app-network
+      - frontend-net
+      - backend-net
 
+  # ================= REVERSE PROXY & SSL (NGINX) =================
   nginx:
     image: nginx:alpine
     container_name: nginx_proxy
@@ -54,12 +75,54 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/certs:/etc/nginx/certs:ro
+      - ./nginx/logs:/var/log/nginx
     depends_on:
       - wordpress
       - phpmyadmin
     networks:
-      - app-network
+      - frontend-net
 
+  # ================= MONITORING (CADVISOR - CONTAINERS) =================
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.47.0
+    container_name: cadvisor_metrics
+    restart: always
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    networks:
+      - frontend-net
+
+  # ================= MONITORING (MYSQLD EXPORTER - DATABASE) =================
+  mysqld-exporter:
+    image: prom/mysqld-exporter:latest
+    container_name: mysql_exporter
+    restart: always
+    environment:
+      DATA_SOURCE_NAME: "${MYSQL_USER}:${MYSQL_PASSWORD}@(db:3306)/${MYSQL_DATABASE}"
+    depends_on:
+      - db
+    networks:
+      - backend-net
+      - frontend-net
+
+  # ================= MONITORING (NGINX PROMETHEUS EXPORTER - WEBSERVER) =================
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:latest
+    container_name: nginx_exporter
+    restart: always
+    command:
+      - -nginx.scrape-uri=http://nginx:80/stub_status
+    depends_on:
+      - nginx
+    networks:
+      - frontend-net
+
+  # ================= MONITORING (PROMETHEUS) =================
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus_monitoring
@@ -69,45 +132,46 @@ services:
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     networks:
-      - app-network
+      - frontend-net
 
+  # ================= VISUALIZATION (GRAFANA) =================
   grafana:
     image: grafana/grafana:latest
     container_name: grafana_dashboard
     restart: always
     ports:
       - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
     depends_on:
       - prometheus
+      - loki
     networks:
-      - app-network
+      - frontend-net
 
+  # ================= LOGGING (LOKI) =================
   loki:
     image: grafana/loki:latest
     container_name: loki_logger
     restart: always
     ports:
       - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
     networks:
-      - app-network
+      - frontend-net
 
+  # ================= LOG AGENT (PROMTAIL) =================
   promtail:
     image: grafana/promtail:latest
     container_name: promtail_agent
     restart: always
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - ./nginx/logs:/var/log/nginx:ro
       - ./promtail-config.yml:/etc/promtail/config.yml:ro
     command: -config.file=/etc/promtail/config.yml
     depends_on:
       - loki
+      - nginx
     networks:
-      - app-network
-
-volumes:
-  db_data:
-
-networks:
-  app-network:
-    driver: bridge
+      - frontend-net
