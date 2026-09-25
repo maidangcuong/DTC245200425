@@ -1,5 +1,3 @@
-version: '3.8'
-
 networks:
   frontend-net:
     driver: bridge
@@ -21,6 +19,7 @@ services:
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_HOST: "%"
     volumes:
       - db_data:/var/lib/mysql
     networks:
@@ -55,9 +54,7 @@ services:
         define('WP_HOME', 'https://localhost');
         define('WP_SITEURL', 'https://localhost');
         define('FORCE_SSL_ADMIN', true);
-        if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
-            $_SERVER['HTTPS'] = 'on';
-        }
+        $$_SERVER['HTTPS'] = 'on';
     depends_on:
       - db
     networks:
@@ -99,11 +96,14 @@ services:
 
   # ================= MONITORING (MYSQLD EXPORTER - DATABASE) =================
   mysqld-exporter:
-    image: prom/mysqld-exporter:latest
+    image: prom/mysqld-exporter:v0.15.1
     container_name: mysql_exporter
     restart: always
     environment:
-      DATA_SOURCE_NAME: "${MYSQL_USER}:${MYSQL_PASSWORD}@(db:3306)/${MYSQL_DATABASE}"
+      MYSQLD_EXPORTER_PASSWORD: ${MYSQL_PASSWORD}
+    command:
+      - "--mysqld.address=db:3306"
+      - "--mysqld.username=${MYSQL_USER}"
     depends_on:
       - db
     networks:
