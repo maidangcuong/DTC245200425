@@ -85,7 +85,9 @@ Truy cập Grafana tại `http://localhost:3001` -> Menu **Explore** -> Chọn D
 ---
 
 ## 5. Lịch sử các bước triển khai (Commit History)
-* **Commit 1:** `Add Nginx reverse proxy with HTTPS self-signed and security headers`
-* **Commit 2:** `Setup Prometheus, Exporters, and Grafana for monitoring`
-* **Commit 3:** `Add Loki, Promtail centralized logging and system hardening`
-* **Commit 4:** `Optimize configuration, add network isolation, exporters, and documentation`
+## 5. Lịch sử các bước triển khai (Commit History)
+* **Commit 1:** Triển khai Nginx Reverse Proxy, cấu hình chứng chỉ SSL/TLS tự ký (HTTPS) và các HTTP Security Headers bảo mật.
+* **Commit 2:** Cấu hình hệ thống giám sát Prometheus, tích hợp các bộ Exporters (cAdvisor, mysqld-exporter, nginx-exporter) và xây dựng Dashboard trực quan trên Grafana.
+* **Commit 3:** Triển khai hệ thống quản lý log tập trung với Grafana Loki và Promtail Agent, thực thi các câu truy vấn LogQL.
+* **Commit 4:** Gia cố bảo mật hệ thống (Hardening), phân tách mạng nội bộ (Network Isolation), tối ưu file Docker Compose và hoàn thiện tài liệu hướng dẫn.
+documentation`
